@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --color-bg-primary: #0f1225;
+  --color-bg-secondary: #1a1f36;
+  --color-bg-card: #1e2442;
+  --color-bg-hover: #252d4a;
+  --color-border: #2a3254;
+  --color-text-primary: #e8ecf4;
+  --color-text-secondary: #8b95b0;
+  --color-text-muted: #5c6484;
+  --color-accent: #10b981;
+  --color-accent-hover: #34d399;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #3b82f6;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+body {
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+}
+
+.font-mono {
+  font-family: 'DM Mono', monospace;
+}
+
+@layer utilities {
+  .bg-primary {
+    background-color: var(--color-bg-primary);
+  }
+  .bg-secondary {
+    background-color: var(--color-bg-secondary);
+  }
+  .bg-card {
+    background-color: var(--color-bg-card);
+  }
+  .bg-hover:hover {
+    background-color: var(--color-bg-hover);
+  }
+  .border-default {
+    border-color: var(--color-border);
+  }
+  .text-primary {
+    color: var(--color-text-primary);
+  }
+  .text-secondary {
+    color: var(--color-text-secondary);
+  }
+  .text-muted {
+    color: var(--color-text-muted);
+  }
+  .text-accent {
+    color: var(--color-accent);
+  }
+  .text-warning {
+    color: var(--color-warning);
+  }
+  .text-danger {
+    color: var(--color-danger);
+  }
+}
