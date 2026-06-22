@@ -15,17 +15,15 @@ export default function Statement() {
   const kol = getKOLById(kolId ?? '')
   const commissions = getCommissionsByKOL(kolId ?? '').filter((c) => c.period === period)
 
-  const summary = useMemo(() => {
-    const totalCommission = commissions.reduce((s, c) => s + c.totalAmount, 0)
-    const totalDeductions = commissions.reduce(
-      (s, c) => s + c.deductions.reduce((d, dd) => d + dd.amount, 0), 0
-    )
-    return { totalCommission, totalDeductions, netPayable: totalCommission - totalDeductions }
-  }, [commissions])
-
   const allItems = commissions.flatMap((c) => c.items)
   const allDeductions = commissions.flatMap((c) => c.deductions)
   const hasDispute = commissions.some((c) => c.isDisputed)
+
+  const summary = useMemo(() => {
+    const totalCommission = allItems.reduce((s, i) => s + i.commissionAmount, 0)
+    const totalDeductions = allDeductions.reduce((s, d) => s + d.amount, 0)
+    return { totalCommission, totalDeductions, netPayable: totalCommission - totalDeductions }
+  }, [allItems, allDeductions])
 
   const categoryTotals = useMemo(() => {
     const map = new Map<ProjectCategory, { amount: number; rate: number; commission: number }>()
@@ -115,7 +113,7 @@ export default function Statement() {
               <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
                 <td colSpan={4} className="px-3 py-2 text-right">合计</td>
                 <td className="px-3 py-2 text-right font-mono">
-                  ¥{allItems.reduce((s, i) => s + i.commissionAmount, 0).toLocaleString()}
+                  ¥{summary.totalCommission.toLocaleString()}
                 </td>
               </tr>
             </tbody>
@@ -146,7 +144,7 @@ export default function Statement() {
                 <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
                   <td className="px-3 py-2">扣减合计</td>
                   <td className="px-3 py-2 text-right font-mono text-red-600">
-                    -¥{allDeductions.reduce((s, d) => s + d.amount, 0).toLocaleString()}
+                    -¥{summary.totalDeductions.toLocaleString()}
                   </td>
                   <td />
                 </tr>

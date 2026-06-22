@@ -1,6 +1,7 @@
 import { useState, useMemo, Fragment } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader'
 import { useAppStore } from '@/store'
 import { monthlyROI } from '@/data/mockData'
@@ -18,11 +19,18 @@ function getRoiClass(roi: number) {
 }
 
 export default function ROIReport() {
-  const { commissions, matches, kols, stores, storeVisits } = useAppStore()
+  const { commissions, matches, kols, stores, storeVisits, leads } = useAppStore()
   const [monthIdx, setMonthIdx] = useState(monthlyROI.length - 1)
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
 
   const currentMonth = monthlyROI[monthIdx]?.month ?? ''
+  const monthStart = dayjs(currentMonth + '-01')
+  const monthEnd = monthStart.endOf('month')
+
+  const inMonth = (time: string) => {
+    const t = dayjs(time)
+    return t.isAfter(monthStart.subtract(1, 'day')) && t.isBefore(monthEnd.add(1, 'day'))
+  }
 
   const storeData = useMemo(() => {
     return stores.map((store) => {
@@ -30,9 +38,14 @@ export default function ROIReport() {
         .filter((v) => v.storeId === store.id)
         .map((v) => v.id)
       const storeCommissions = commissions.filter((c) =>
-        visitIds.includes(c.storeVisitId)
+        visitIds.includes(c.storeVisitId) && c.period === currentMonth
       )
-      const storeMatches = matches.filter((m) => m.storeId === store.id)
+      const storeMatches = matches.filter((m) => {
+        if (m.storeId !== store.id) return false
+        const lead = leads.find((l) => l.id === m.leadId)
+        if (!lead) return false
+        return inMonth(lead.time)
+      })
       const kolIds = new Set([
         ...storeCommissions.map((c) => c.kolId),
         ...storeMatches.map((m) => m.kolId),
@@ -49,7 +62,7 @@ export default function ROIReport() {
         roi,
       }
     })
-  }, [stores, commissions, matches, storeVisits])
+  }, [stores, commissions, matches, storeVisits, leads, currentMonth])
 
   const chartData = useMemo(
     () =>
@@ -68,9 +81,14 @@ export default function ROIReport() {
       .filter((v) => v.storeId === expandedStore)
       .map((v) => v.id)
     const storeCommissions = commissions.filter((c) =>
-      visitIds.includes(c.storeVisitId)
+      visitIds.includes(c.storeVisitId) && c.period === currentMonth
     )
-    const storeMatches = matches.filter((m) => m.storeId === expandedStore)
+    const storeMatches = matches.filter((m) => {
+      if (m.storeId !== expandedStore) return false
+      const lead = leads.find((l) => l.id === m.leadId)
+      if (!lead) return false
+      return inMonth(lead.time)
+    })
     const kolMap = new Map<string, { commission: number; revenue: number }>()
     storeCommissions.forEach((c) => {
       const existing = kolMap.get(c.kolId) ?? { commission: 0, revenue: 0 }
@@ -91,7 +109,7 @@ export default function ROIReport() {
         roi: data.commission > 0 ? data.revenue / data.commission : 0,
       }))
       .sort((a, b) => b.roi - a.roi)
-  }, [expandedStore, commissions, matches, kols, storeVisits])
+  }, [expandedStore, commissions, matches, kols, storeVisits, leads, currentMonth])
 
   return (
     <div className="p-6 space-y-6">

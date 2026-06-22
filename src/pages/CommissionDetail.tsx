@@ -54,6 +54,10 @@ export default function CommissionDetail() {
     return commission.deductions.reduce((s, d) => s + d.amount, 0)
   }, [commission])
 
+  const netAmount = useMemo(() => {
+    return itemsTotal - deductionsTotal
+  }, [itemsTotal, deductionsTotal])
+
   if (!commission) {
     return (
       <div className="p-6">
@@ -66,7 +70,8 @@ export default function CommissionDetail() {
   }
 
   const kol = getKOLById(commission.kolId)
-  const netAmount = itemsTotal - deductionsTotal
+  const store = getStoreById(commission.storeVisitId ? commission.storeVisitId.replace('sv', 'store') : '')
+  const displayAmount = Math.round(netAmount * 100) / 100
 
   function handleAction(newStatus: CommissionStatus) {
     updateCommission(commission.id, { status: newStatus })
@@ -85,7 +90,11 @@ export default function CommissionDetail() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">{kol?.name ?? '-'}</h1>
-          <p className="text-secondary text-sm mt-1">期间：{commission.period}</p>
+          <p className="text-secondary text-sm mt-1">
+            期间：{commission.period}
+            {store && <span className="mx-2">·</span>}
+            {store?.name}
+          </p>
         </div>
         <div className="text-right">
           <StatusBadge
@@ -94,7 +103,7 @@ export default function CommissionDetail() {
               Object.entries(COMMISSION_STATUS_LABELS).map(([k, v]) => [v, STATUS_VARIANT_MAP[k as CommissionStatus]])
             )}
           />
-          <p className="text-3xl font-mono font-bold text-primary mt-2">¥{commission.totalAmount.toLocaleString()}</p>
+          <p className="text-3xl font-mono font-bold text-primary mt-2">¥{displayAmount.toLocaleString()}</p>
         </div>
       </div>
 
@@ -164,8 +173,12 @@ export default function CommissionDetail() {
             <tbody>
               {commission.deductions.map((d) => (
                 <tr key={d.id} className="border-t border-default bg-card">
-                  <td className="px-4 py-3 text-primary">{DEDUCTION_TYPE_LABELS[d.type]}</td>
-                  <td className="px-4 py-3 text-primary font-mono">¥{d.amount.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-primary">
+                    <span className="inline-block rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-500/15 text-red-400">
+                      {DEDUCTION_TYPE_LABELS[d.type]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-primary font-mono text-red-400">-¥{d.amount.toLocaleString()}</td>
                   <td className="px-4 py-3 text-secondary">{d.description}</td>
                 </tr>
               ))}
@@ -177,14 +190,21 @@ export default function CommissionDetail() {
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-4 p-4 bg-secondary rounded-lg border border-default">
-        <span className="text-secondary">明细合计：</span>
-        <span className="font-mono text-primary">¥{itemsTotal.toLocaleString()}</span>
-        <span className="text-secondary">-</span>
-        <span className="text-secondary">扣减合计：</span>
-        <span className="font-mono text-primary">¥{deductionsTotal.toLocaleString()}</span>
-        <span className="text-secondary">=</span>
-        <span className="font-mono text-lg font-bold text-primary">¥{netAmount.toLocaleString()}</span>
+      <div className="flex items-center justify-end gap-6 p-4 bg-secondary rounded-lg border border-default">
+        <div className="flex items-center gap-2">
+          <span className="text-secondary">明细合计：</span>
+          <span className="font-mono text-primary">¥{itemsTotal.toLocaleString()}</span>
+        </div>
+        <span className="text-muted text-lg">−</span>
+        <div className="flex items-center gap-2">
+          <span className="text-secondary">扣减合计：</span>
+          <span className="font-mono text-primary">¥{deductionsTotal.toLocaleString()}</span>
+        </div>
+        <span className="text-muted text-lg">=</span>
+        <div className="flex items-center gap-2">
+          <span className="text-secondary text-base">应结净额：</span>
+          <span className="font-mono text-lg font-bold text-[var(--color-accent)]">¥{displayAmount.toLocaleString()}</span>
+        </div>
       </div>
 
       {commission.status === 'draft' && (

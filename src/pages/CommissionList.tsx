@@ -29,7 +29,7 @@ const TAB_LABELS: Record<CommissionStatus | 'all', string> = {
 
 export default function CommissionList() {
   const navigate = useNavigate()
-  const { commissions, kols, stores, storeVisits, addCommission } = useAppStore()
+  const { commissions, kols, stores, storeVisits, createCommissionCalc } = useAppStore()
 
   const [statusTab, setStatusTab] = useState<CommissionStatus | 'all'>('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -38,6 +38,12 @@ export default function CommissionList() {
   const [formPeriod, setFormPeriod] = useState('')
 
   const getKolName = (id: string) => kols.find((k) => k.id === id)?.name ?? '-'
+  const getStoreName = (id: string) => stores.find((s) => s.id === id)?.name ?? '-'
+  const getVisitLabel = (id: string) => {
+    const v = storeVisits.find((x) => x.id === id)
+    if (!v) return id
+    return `${v.visitDate} · ${getStoreName(v.storeId)}`
+  }
 
   const filtered = useMemo(() => {
     return commissions.filter((c) => {
@@ -48,22 +54,12 @@ export default function CommissionList() {
 
   function handleCreate() {
     if (!formKolId || !formVisitId || !formPeriod) return
-    addCommission({
-      id: `comm-${Date.now()}`,
-      kolId: formKolId,
-      storeVisitId: formVisitId,
-      period: formPeriod,
-      items: [],
-      deductions: [],
-      totalAmount: 0,
-      status: 'draft',
-      createdAt: new Date().toISOString().slice(0, 10),
-      isDisputed: false,
-    })
+    const calc = createCommissionCalc(formKolId, formVisitId, formPeriod)
     setShowCreateModal(false)
     setFormKolId('')
     setFormVisitId('')
     setFormPeriod('')
+    navigate(`/commission/${calc.id}`)
   }
 
   const visitOptions = formKolId
@@ -119,11 +115,11 @@ export default function CommissionList() {
             {filtered.map((c) => (
               <tr key={c.id} className="border-t border-default bg-card hover:bg-hover transition-colors">
                 <td className="px-4 py-3 text-primary">{getKolName(c.kolId)}</td>
-                <td className="px-4 py-3 text-primary font-mono text-xs">{c.storeVisitId}</td>
+                <td className="px-4 py-3 text-primary text-xs">{getVisitLabel(c.storeVisitId)}</td>
                 <td className="px-4 py-3 text-primary">{c.period}</td>
                 <td className="px-4 py-3 text-primary font-mono">{c.items.length}</td>
                 <td className="px-4 py-3 text-primary font-mono">{c.deductions.length}</td>
-                <td className="px-4 py-3 text-primary font-mono">¥{c.totalAmount.toLocaleString()}</td>
+                <td className="px-4 py-3 text-primary font-mono font-semibold">¥{c.totalAmount.toLocaleString()}</td>
                 <td className="px-4 py-3">
                   <StatusBadge
                     status={COMMISSION_STATUS_LABELS[c.status]}
@@ -188,10 +184,13 @@ export default function CommissionList() {
                 />
               </div>
             </div>
+            <p className="text-xs text-muted bg-card rounded-md px-3 py-2">
+              系统将自动根据匹配结果生成佣金明细，并按项目类别计算提成比例，自动扣除退款、重复和未成单。
+            </p>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 rounded-md text-sm bg-card text-secondary border border-default">取消</button>
               <button onClick={handleCreate} disabled={!formKolId || !formVisitId || !formPeriod} className="px-4 py-2 rounded-md text-sm font-medium bg-[var(--color-accent)] text-white disabled:opacity-50">
-                <Plus size={14} className="inline mr-1" />创建
+                <Plus size={14} className="inline mr-1" />创建并试算
               </button>
             </div>
           </div>

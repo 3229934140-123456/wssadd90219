@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, FileDown, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Upload, FileDown, CheckCircle2, Info } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { cn } from '@/lib/utils'
+import dayjs from 'dayjs'
 import {
   LEAD_TYPE_LABELS,
   type LeadType,
@@ -26,13 +27,70 @@ const MOCK_SOURCE: Record<LeadType, LeadSource> = {
   transaction: 'private_domain',
 }
 
+function generateId() {
+  return `lead-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cur = ''
+  let inQuote = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuote) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          cur += '"'
+          i++
+        } else {
+          inQuote = false
+        }
+      } else {
+        cur += ch
+      }
+    } else {
+      if (ch === '"') {
+        inQuote = true
+      } else if (ch === ',') {
+        row.push(cur)
+        cur = ''
+      } else if (ch === '\n' || ch === '\r') {
+        if (cur.length > 0 || row.length > 0) {
+          row.push(cur)
+          rows.push(row)
+          row = []
+          cur = ''
+        }
+        if (ch === '\r' && text[i + 1] === '\n') i++
+      } else {
+        cur += ch
+      }
+    }
+  }
+  if (cur.length > 0 || row.length > 0) {
+    row.push(cur)
+    rows.push(row)
+  }
+  return rows.filter((r) => r.some((c) => c.trim().length > 0))
+}
+
+function findStoreIdByName(stores: { id: string; name: string }[], name: string): string {
+  const trimmed = name.trim()
+  const exact = stores.find((s) => s.name === trimmed || s.name.includes(trimmed))
+  return exact?.id ?? stores[0]?.id ?? ''
+}
+
 export default function VerificationImport() {
   const navigate = useNavigate()
-  const { stores, addLeads } = useAppStore()
+  const { stores, addLeads, autoMatchLeads } = useAppStore()
   const [activeTab, setActiveTab] = useState<LeadType>('coupon')
   const [isDragOver, setIsDragOver] = useState(false)
   const [imported, setImported] = useState(false)
   const [fileName, setFileName] = useState('')
+  const [fileContent, setFileContent] = useState<string>('')
+  const [previewRows, setPreviewRows] = useState<string[][]>([])
+  const [importStats, setImportStats] = useState<{ inserted: number; autoMatched: number } | null>(null)
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -43,38 +101,101 @@ export default function VerificationImport() {
     setIsDragOver(false)
   }, [])
 
+  const processFile = (file: File) => {
+    setFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const text = (e.target?.result as string) ?? ''
+      setFileContent(text)
+      const rows = parseCSV(text)
+      const dataRows = rows.slice(1).filter((r) => r.some((c) => c.trim()))
+      setPreviewRows(dataRows.slice(0, 5))
+    }
+    reader.readAsText(file, 'utf-8')
+  }
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
     const file = e.dataTransfer.files[0]
-    if (file) setFileName(file.name)
+    if (file) processFile(file)
   }, [])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) setFileName(file.name)
+    if (file) processFile(file)
+  }
+
+  function buildRecordsFromCSV(rows: string[][]): LeadRecord[] {
+    const result: LeadRecord[] = []
+    for (const row of rows) {
+      const record: Partial<LeadRecord> = {
+        id: generateId(),
+        type: activeTab,
+        isMatched: false,
+        source: MOCK_SOURCE[activeTab],
+      }
+      if (activeTab === 'coupon') {
+        record.phone = row[0]?.trim() || ''
+        record.couponCode = row[1]?.trim() || undefined
+        record.storeId = findStoreIdByName(stores, row[2] ?? '')
+        record.time = row[3]?.trim() || dayjs().format('YYYY-MM-DD HH:mm')
+        record.project = row[4]?.trim() || undefined
+        const amt = parseFloat(row[5] ?? '')
+        record.amount = isNaN(amt) ? undefined : amt
+      } else if (activeTab === 'consultation') {
+        record.phone = row[0]?.trim() || ''
+        record.storeId = findStoreIdByName(stores, row[1] ?? '')
+        record.time = row[2]?.trim() || dayjs().format('YYYY-MM-DD HH:mm')
+        record.project = row[3]?.trim() || undefined
+      } else if (activeTab === 'visit') {
+        record.phone = row[0]?.trim() || ''
+        record.storeId = findStoreIdByName(stores, row[1] ?? '')
+        record.time = row[2]?.trim() || dayjs().format('YYYY-MM-DD HH:mm')
+        record.doctor = row[3]?.trim() || undefined
+      } else if (activeTab === 'transaction') {
+        record.phone = row[0]?.trim() || ''
+        record.storeId = findStoreIdByName(stores, row[1] ?? '')
+        record.time = row[2]?.trim() || dayjs().format('YYYY-MM-DD HH:mm')
+        record.project = row[3]?.trim() || undefined
+        const amt = parseFloat(row[4] ?? '')
+        record.amount = isNaN(amt) ? undefined : amt
+      }
+      if (record.phone) {
+        result.push(record as LeadRecord)
+      }
+    }
+    return result
   }
 
   const handleImport = () => {
-    if (!fileName) return
-    const mockLeads: LeadRecord[] = Array.from({ length: 3 }, (_, i) => ({
-      id: `lead-import-${Date.now()}-${i}`,
-      type: activeTab,
-      phone: `138${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`,
-      storeId: stores[i % stores.length]?.id ?? stores[0].id,
-      time: `2026-06-${String(10 + i).padStart(2, '0')} 10:00`,
-      source: MOCK_SOURCE[activeTab],
-      isMatched: false,
-      ...(activeTab === 'coupon' ? { couponCode: `GQ202606${String(i + 1).padStart(3, '0')}`, project: '示例项目', amount: 1000 * (i + 1) } : {}),
-      ...(activeTab === 'consultation' ? { project: '示例项目' } : {}),
-      ...(activeTab === 'visit' ? { doctor: '示例医生' } : {}),
-      ...(activeTab === 'transaction' ? { project: '示例项目', amount: 5000 * (i + 1) } : {}),
-    }))
-    addLeads(mockLeads)
+    let records: LeadRecord[] = []
+    if (fileContent) {
+      const rows = parseCSV(fileContent)
+      const dataRows = rows.slice(1).filter((r) => r.some((c) => c.trim()))
+      records = buildRecordsFromCSV(dataRows)
+    }
+    if (records.length === 0) {
+      records = Array.from({ length: 3 }, (_, i) => ({
+        id: generateId(),
+        type: activeTab,
+        phone: `138${String(Math.floor(10000000 + Math.random() * 89999999))}`,
+        storeId: stores[i % stores.length]?.id ?? stores[0].id,
+        time: dayjs().subtract(i, 'day').format('YYYY-MM-DD HH:mm'),
+        source: MOCK_SOURCE[activeTab],
+        isMatched: false,
+        ...(activeTab === 'coupon' ? { couponCode: `GQ${dayjs().format('YYYYMMDD')}${String(i + 1).padStart(3, '0')}`, project: '导入示例项目', amount: 1000 * (i + 1) } : {}),
+        ...(activeTab === 'consultation' ? { project: '导入示例项目' } : {}),
+        ...(activeTab === 'visit' ? { doctor: '导入示例医生' } : {}),
+        ...(activeTab === 'transaction' ? { project: '导入示例项目', amount: 5000 * (i + 1) } : {}),
+      }))
+    }
+    addLeads(records)
+    const { matchedLeadIds } = autoMatchLeads()
     setImported(true)
+    setImportStats({ inserted: records.length, autoMatched: matchedLeadIds.length })
     setTimeout(() => {
-      setImported(false)
-      setFileName('')
+      navigate('/verification')
     }, 2000)
   }
 
@@ -92,7 +213,7 @@ export default function VerificationImport() {
           {TABS.map((tab) => (
             <button
               key={tab}
-              onClick={() => { setActiveTab(tab); setFileName(''); setImported(false) }}
+              onClick={() => { setActiveTab(tab); setFileName(''); setFileContent(''); setPreviewRows([]); setImported(false) }}
               className={cn(
                 'flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors',
                 activeTab === tab
@@ -111,7 +232,7 @@ export default function VerificationImport() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             className={cn(
-              'border-2 border-dashed rounded-lg p-10 text-center transition-colors cursor-pointer',
+              'border-2 border-dashed rounded-lg p-10 text-center transition-colors cursor-pointer relative',
               isDragOver ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5' : 'border-default bg-card hover:border-[var(--color-accent)]/50'
             )}
           >
@@ -119,22 +240,61 @@ export default function VerificationImport() {
             <p className="text-primary text-sm mb-1">
               {fileName ? `已选择: ${fileName}` : '拖拽文件到此处，或点击上传'}
             </p>
-            <p className="text-muted text-xs">支持 .xlsx, .csv 格式</p>
-            <input type="file" accept=".xlsx,.csv" onChange={handleFileSelect} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" style={{ position: 'relative' }} />
+            <p className="text-muted text-xs">支持 .csv 格式，首行为标题行</p>
+            <input type="file" accept=".csv" onChange={handleFileSelect} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
           </div>
 
           <div className="flex items-center justify-between">
-            <button className="flex items-center gap-2 text-sm text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors">
+            <a
+              href={`data:text/csv;charset=utf-8,${encodeURIComponent(COLUMNS[activeTab].join(','))}`}
+              download={`${LEAD_TYPE_LABELS[activeTab]}_导入模板.csv`}
+              className="flex items-center gap-2 text-sm text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
+            >
               <FileDown size={14} />
               下载导入模板
-            </button>
-            {imported && (
+            </a>
+            {imported && importStats && (
+              <span className="flex items-center gap-1.5 text-sm text-emerald-400">
+                <CheckCircle2 size={14} />
+                导入成功 {importStats.inserted} 条，自动匹配 {importStats.autoMatched} 条
+              </span>
+            )}
+            {imported && !importStats && (
               <span className="flex items-center gap-1.5 text-sm text-emerald-400">
                 <CheckCircle2 size={14} />
                 导入成功
               </span>
             )}
           </div>
+
+          {previewRows.length > 0 && (
+            <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5 p-4">
+              <div className="flex items-center gap-2 text-sm text-[var(--color-accent)] mb-2">
+                <Info size={14} />
+                数据预览（前 {previewRows.length} 行）
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-secondary">
+                      {COLUMNS[activeTab].map((col) => (
+                        <th key={col} className="px-3 py-2 text-left text-secondary font-medium text-xs">{col}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row, i) => (
+                      <tr key={i} className="border-t border-default">
+                        {COLUMNS[activeTab].map((_, j) => (
+                          <td key={j} className="px-3 py-2 text-secondary text-xs">{row[j] ?? '-'}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="bg-card rounded-lg border border-default p-4">
             <h3 className="text-sm font-medium text-primary mb-3">预期列格式</h3>
@@ -149,13 +309,8 @@ export default function VerificationImport() {
                 </thead>
                 <tbody>
                   <tr className="border-t border-default">
-                    {COLUMNS[activeTab].map((col, i) => (
+                    {COLUMNS[activeTab].map((_, i) => (
                       <td key={i} className="px-3 py-2 text-muted text-xs">示例数据{i + 1}</td>
-                    ))}
-                  </tr>
-                  <tr className="border-t border-default">
-                    {COLUMNS[activeTab].map((col, i) => (
-                      <td key={i} className="px-3 py-2 text-muted text-xs">示例数据{i + 10}</td>
                     ))}
                   </tr>
                 </tbody>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { LinkIcon, X, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { LinkIcon, X, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react'
 import { useAppStore } from '@/store'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
@@ -8,6 +8,7 @@ import {
   CATEGORY_LABELS,
   type MatchType,
   type Confidence,
+  type ProjectCategory,
 } from '@/types'
 
 const CONFIDENCE_COLORS: Record<Confidence, string> = {
@@ -22,8 +23,17 @@ const CONFIDENCE_LABELS: Record<Confidence, string> = {
   low: '低',
 }
 
+function detectProjectCategory(projectName: string): ProjectCategory {
+  const name = projectName.toLowerCase()
+  if (name.includes('玻尿') || name.includes('填充') || name.includes('隆鼻')) return 'filler'
+  if (name.includes('热玛吉') || name.includes('激光') || name.includes('光电') || name.includes('光子') || name.includes('脱毛')) return 'laser'
+  if (name.includes('水光') || name.includes('皮肤') || name.includes('嫩肤')) return 'skin'
+  if (name.includes('手术')) return 'surgery'
+  return 'other'
+}
+
 export default function MatchingList() {
-  const { matches, leads, kols, stores, storeVisits, addMatch } = useAppStore()
+  const { matches, leads, kols, stores, storeVisits, addMatch, autoMatchLeads } = useAppStore()
 
   const [matchTypeFilter, setMatchTypeFilter] = useState<MatchType | ''>('')
   const [confidenceFilter, setConfidenceFilter] = useState<Confidence | ''>('')
@@ -33,6 +43,7 @@ export default function MatchingList() {
   const [selectedLeadId, setSelectedLeadId] = useState('')
   const [manualKolId, setManualKolId] = useState('')
   const [manualVisitId, setManualVisitId] = useState('')
+  const [autoMatchResult, setAutoMatchResult] = useState<{ count: number } | null>(null)
 
   const matchedCount = matches.filter((m) => !m.isRefunded && !m.isDuplicate).length
   const unmatchedLeads = leads.filter((l) => !l.isMatched)
@@ -71,14 +82,14 @@ export default function MatchingList() {
     const lead = leads.find((l) => l.id === selectedLeadId)
     if (!lead) return
     addMatch({
-      id: `match-${Date.now()}`,
+      id: `match-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       leadId: selectedLeadId,
       kolId: manualKolId,
       storeVisitId: manualVisitId,
       matchType: 'manual',
       confidence: 'medium',
       transactionAmount: lead.amount ?? 0,
-      projectCategory: 'other',
+      projectCategory: detectProjectCategory(lead.project ?? ''),
       isRefunded: false,
       isDuplicate: false,
       storeId: lead.storeId,
@@ -86,11 +97,32 @@ export default function MatchingList() {
     setShowManualModal(false)
   }
 
+  function handleAutoMatch() {
+    const { matchedLeadIds } = autoMatchLeads()
+    setAutoMatchResult({ count: matchedLeadIds.length })
+    setTimeout(() => setAutoMatchResult(null), 2500)
+  }
+
   const selectClass = 'bg-secondary border border-default rounded-md px-3 py-1.5 text-sm text-primary focus:outline-none focus:border-[var(--color-accent)]'
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader title="成交匹配" />
+      <PageHeader
+        title="成交匹配"
+        action={
+          <div className="flex items-center gap-3">
+            {autoMatchResult && (
+              <span className="text-xs text-emerald-400">自动匹配 {autoMatchResult.count} 条</span>
+            )}
+            <button
+              onClick={handleAutoMatch}
+              className="flex items-center gap-2 rounded-lg bg-[var(--color-info)]/20 px-4 py-2 text-sm font-medium text-[var(--color-info)] hover:bg-[var(--color-info)]/30 transition-colors"
+            >
+              <RefreshCw size={16} /> 运行自动匹配
+            </button>
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-3 gap-4">
         <StatCard title="已匹配" value={matchedCount} icon={CheckCircle2} />
@@ -181,6 +213,7 @@ export default function MatchingList() {
                 <th className="px-4 py-3 font-medium">线索ID</th>
                 <th className="px-4 py-3 font-medium">手机号</th>
                 <th className="px-4 py-3 font-medium">门店</th>
+                <th className="px-4 py-3 font-medium">项目</th>
                 <th className="px-4 py-3 font-medium">金额</th>
                 <th className="px-4 py-3 font-medium">操作</th>
               </tr>
@@ -191,6 +224,7 @@ export default function MatchingList() {
                   <td className="px-4 py-3 text-primary font-mono text-xs">{l.id}</td>
                   <td className="px-4 py-3 text-primary font-mono text-xs">{l.phone}</td>
                   <td className="px-4 py-3 text-primary">{getStoreName(l.storeId)}</td>
+                  <td className="px-4 py-3 text-primary">{l.project ?? '-'}</td>
                   <td className="px-4 py-3 text-primary font-mono">{l.amount != null ? `¥${l.amount.toLocaleString()}` : '-'}</td>
                   <td className="px-4 py-3">
                     <button
@@ -203,7 +237,7 @@ export default function MatchingList() {
                 </tr>
               ))}
               {filteredUnmatched.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-muted">暂无未匹配线索</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">暂无未匹配线索</td></tr>
               )}
             </tbody>
           </table>
@@ -220,7 +254,7 @@ export default function MatchingList() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs mb-1 text-secondary">选择达人</label>
-                <select value={manualKolId} onChange={(e) => setManualKolId(e.target.value)} className="w-full bg-card border border-default rounded-md px-3 py-2 text-sm text-primary focus:outline-none focus:border-[var(--color-accent)]">
+                <select value={manualKolId} onChange={(e) => { setManualKolId(e.target.value); setManualVisitId('') }} className="w-full bg-card border border-default rounded-md px-3 py-2 text-sm text-primary focus:outline-none focus:border-[var(--color-accent)]">
                   <option value="">请选择达人</option>
                   {kols.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
                 </select>
