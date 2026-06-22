@@ -45,6 +45,9 @@ interface AppState {
   getStoreVisitsByKOL: (kolId: string) => StoreVisit[]
   getMatchesByKOL: (kolId: string) => MatchResult[]
   getCommissionsByKOL: (kolId: string) => CommissionCalc[]
+  getMatchById: (id: string) => MatchResult | undefined
+  getLeadById: (id: string) => LeadRecord | undefined
+  recalcAllCommissionTotals: () => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -315,7 +318,27 @@ export const useAppStore = create<AppState>()(
       getStoreVisitsByKOL: (kolId) => get().storeVisits.filter((v) => v.kolId === kolId),
       getMatchesByKOL: (kolId) => get().matches.filter((m) => m.kolId === kolId),
       getCommissionsByKOL: (kolId) => get().commissions.filter((c) => c.kolId === kolId),
+      getMatchById: (id) => get().matches.find((m) => m.id === id),
+      getLeadById: (id) => get().leads.find((l) => l.id === id),
+      recalcAllCommissionTotals: () => {
+        const state = get()
+        const updated = state.commissions.map((c) => {
+          const itemsTotal = c.items.reduce((s, i) => s + i.commissionAmount, 0)
+          const deductionsTotal = c.deductions.reduce((s, d) => s + d.amount, 0)
+          const totalAmount = Math.round((itemsTotal - deductionsTotal) * 100) / 100
+          if (Math.abs(c.totalAmount - totalAmount) < 0.01) return c
+          return { ...c, totalAmount }
+        })
+        if (updated.some((c, i) => c !== state.commissions[i])) {
+          set({ commissions: updated })
+        }
+      },
     }),
-    { name: 'kol-commission-store-v2' }
+    {
+      name: 'kol-commission-store-v2',
+      onRehydrateStorage: () => (state) => {
+        state?.recalcAllCommissionTotals()
+      },
+    }
   )
 )

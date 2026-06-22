@@ -153,7 +153,7 @@ export default function FinanceList() {
                           <CreditCard size={13} /> 确认打款
                         </button>
                         <button
-                          onClick={() => navigate(`/statement/${c.kolId}?period=${c.period}`)}
+                          onClick={() => navigate(`/statement/single/${c.id}`)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
                           style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
                         >
@@ -163,7 +163,7 @@ export default function FinanceList() {
                     )}
                     {activeTab === 'paid' && (
                       <button
-                        onClick={() => navigate(`/statement/${c.kolId}?period=${c.period}`)}
+                        onClick={() => navigate(`/statement/single/${c.id}`)}
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
                         style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
                       >

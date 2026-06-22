@@ -30,6 +30,7 @@ export default function App() {
           <Route path="/commission" element={<CommissionList />} />
           <Route path="/commission/:id" element={<CommissionDetail />} />
           <Route path="/finance" element={<FinanceList />} />
+          <Route path="/statement/single/:commissionId" element={<Statement />} />
           <Route path="/statement/:kolId" element={<Statement />} />
           <Route path="/roi" element={<ROIReport />} />
         </Route>

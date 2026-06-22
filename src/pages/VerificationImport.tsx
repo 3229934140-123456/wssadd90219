@@ -1,14 +1,17 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, FileDown, CheckCircle2, Info } from 'lucide-react'
+import { ArrowLeft, Upload, FileDown, CheckCircle2, Info, XCircle, Users, Phone, Ticket, Store, Clock, MessageSquare, Sparkles } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { cn } from '@/lib/utils'
 import dayjs from 'dayjs'
 import {
   LEAD_TYPE_LABELS,
+  LEAD_SOURCE_LABELS,
+  MATCH_TYPE_LABELS,
   type LeadType,
   type LeadRecord,
   type LeadSource,
+  type MatchResult,
 } from '@/types'
 
 const TABS: LeadType[] = ['coupon', 'consultation', 'visit', 'transaction']
@@ -83,14 +86,16 @@ function findStoreIdByName(stores: { id: string; name: string }[], name: string)
 
 export default function VerificationImport() {
   const navigate = useNavigate()
-  const { stores, addLeads, autoMatchLeads } = useAppStore()
+  const { stores, kols, addLeads, autoMatchLeads, leads } = useAppStore()
   const [activeTab, setActiveTab] = useState<LeadType>('coupon')
   const [isDragOver, setIsDragOver] = useState(false)
   const [imported, setImported] = useState(false)
   const [fileName, setFileName] = useState('')
   const [fileContent, setFileContent] = useState<string>('')
   const [previewRows, setPreviewRows] = useState<string[][]>([])
-  const [importStats, setImportStats] = useState<{ inserted: number; autoMatched: number } | null>(null)
+  const [importedLeads, setImportedLeads] = useState<LeadRecord[] | null>(null)
+  const [newMatches, setNewMatches] = useState<MatchResult[] | null>(null)
+  const [resultTab, setResultTab] = useState<'matched' | 'unmatched'>('matched')
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -191,13 +196,238 @@ export default function VerificationImport() {
         ...(activeTab === 'transaction' ? { project: '导入示例项目', amount: 5000 * (i + 1), remark: '抖音@美少女探店日记推荐' } : {}),
       }))
     }
+    const leadIdsBefore = new Set(leads.map((l) => l.id))
     addLeads(records)
-    const { matchedLeadIds } = autoMatchLeads()
+    const { newMatches: matches, matchedLeadIds } = autoMatchLeads()
     setImported(true)
-    setImportStats({ inserted: records.length, autoMatched: matchedLeadIds.length })
-    setTimeout(() => {
-      navigate('/verification')
-    }, 2000)
+    setImportedLeads(records)
+    setNewMatches(matches.filter((m) => matchedLeadIds.includes(m.leadId)))
+  }
+
+  const matchedList = useMemo(() => {
+    if (!newMatches || !importedLeads) return []
+    return newMatches.map((m) => {
+      const lead = importedLeads.find((l) => l.id === m.leadId)
+      const kol = kols.find((k) => k.id === m.kolId)
+      const store = stores.find((s) => s.id === m.storeId)
+      let matchBasis = ''
+      if (m.matchType === 'coupon') {
+        matchBasis = `券码 ${lead?.couponCode ?? '-'}`
+      } else if (m.matchType === 'phone') {
+        matchBasis = `手机号 ${lead?.phone?.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') ?? '-'}`
+      } else if (m.matchType === 'remark') {
+        matchBasis = `客服备注：${lead?.remark ?? '-'}`
+      } else {
+        matchBasis = '手动匹配'
+      }
+      return {
+        match: m,
+        lead,
+        kolName: kol?.name ?? '-',
+        storeName: store?.name ?? '-',
+        matchBasis,
+      }
+    })
+  }, [newMatches, importedLeads, kols, stores])
+
+  const unmatchedList = useMemo(() => {
+    if (!newMatches || !importedLeads) return []
+    const matchedIds = new Set(newMatches.map((m) => m.leadId))
+    return importedLeads
+      .filter((l) => !matchedIds.has(l.id))
+      .map((l) => {
+        const store = stores.find((s) => s.id === l.storeId)
+        return { lead: l, storeName: store?.name ?? '-' }
+      })
+  }, [newMatches, importedLeads, stores])
+
+  if (imported && importedLeads && newMatches) {
+    const matchedCount = matchedList.length
+    const unmatchedCount = unmatchedList.length
+
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center gap-3 mb-6">
+          <button onClick={() => navigate('/verification')} className="p-2 rounded-lg bg-secondary border border-default hover:bg-hover transition-colors">
+            <ArrowLeft size={18} className="text-primary" />
+          </button>
+          <h1 className="text-2xl font-bold text-primary">导入结果</h1>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div className="rounded-lg p-5 bg-card border border-default">
+            <div className="text-sm text-secondary mb-1">导入总数</div>
+            <div className="text-3xl font-bold text-primary font-mono">{importedLeads.length}</div>
+          </div>
+          <div className="rounded-lg p-5 bg-card border border-default">
+            <div className="text-sm text-secondary mb-1">自动匹配成功</div>
+            <div className="text-3xl font-bold text-emerald-400 font-mono">{matchedCount}</div>
+          </div>
+          <div className="rounded-lg p-5 bg-card border border-default">
+            <div className="text-sm text-secondary mb-1">待手动匹配</div>
+            <div className="text-3xl font-bold text-orange-400 font-mono">{unmatchedCount}</div>
+          </div>
+        </div>
+
+        <div className="flex gap-1 p-1 bg-secondary rounded-lg border border-default">
+          <button
+            onClick={() => setResultTab('matched')}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+              resultTab === 'matched'
+                ? 'bg-card text-primary shadow-sm'
+                : 'text-secondary hover:text-primary'
+            )}
+          >
+            <CheckCircle2 size={16} className="text-emerald-400" />
+            已匹配 ({matchedCount})
+          </button>
+          <button
+            onClick={() => setResultTab('unmatched')}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+              resultTab === 'unmatched'
+                ? 'bg-card text-primary shadow-sm'
+                : 'text-secondary hover:text-primary'
+            )}
+          >
+            <XCircle size={16} className="text-orange-400" />
+            未匹配 ({unmatchedCount})
+          </button>
+        </div>
+
+        {resultTab === 'matched' && (
+          <div className="overflow-x-auto rounded-lg border border-default bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-secondary text-secondary">
+                  <th className="px-4 py-3 text-left font-medium">达人</th>
+                  <th className="px-4 py-3 text-left font-medium">匹配方式</th>
+                  <th className="px-4 py-3 text-left font-medium">匹配依据</th>
+                  <th className="px-4 py-3 text-left font-medium">门店</th>
+                  <th className="px-4 py-3 text-left font-medium">成交时间</th>
+                  <th className="px-4 py-3 text-right font-medium">金额</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matchedList.map((item) => (
+                  <tr key={item.match.id} className="border-t border-default hover:bg-hover transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Users size={14} className="text-emerald-400" />
+                        <span className="text-primary font-medium">{item.kolName}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        'inline-block rounded-full px-2.5 py-0.5 text-xs font-medium',
+                        item.match.matchType === 'remark'
+                          ? 'bg-purple-500/15 text-purple-400'
+                          : item.match.matchType === 'coupon'
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : 'bg-blue-500/15 text-blue-400'
+                      )}>
+                        {MATCH_TYPE_LABELS[item.match.matchType]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 text-secondary">
+                        {item.match.matchType === 'remark' && <Sparkles size={13} className="text-purple-400" />}
+                        <span className="font-mono text-xs">{item.matchBasis}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-primary">{item.storeName}</td>
+                    <td className="px-4 py-3 text-secondary text-xs">{item.lead?.time ?? '-'}</td>
+                    <td className="px-4 py-3 text-right font-mono text-primary">
+                      {item.lead?.amount != null ? `¥${item.lead.amount.toLocaleString()}` : '-'}
+                    </td>
+                  </tr>
+                ))}
+                {matchedList.length === 0 && (
+                  <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">暂无匹配成功的线索</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {resultTab === 'unmatched' && (
+          <div className="overflow-x-auto rounded-lg border border-default bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-secondary text-secondary">
+                  <th className="px-4 py-3 text-left font-medium">手机号</th>
+                  <th className="px-4 py-3 text-left font-medium">券码</th>
+                  <th className="px-4 py-3 text-left font-medium">门店</th>
+                  <th className="px-4 py-3 text-left font-medium">时间</th>
+                  <th className="px-4 py-3 text-left font-medium">项目</th>
+                  <th className="px-4 py-3 text-left font-medium">客服备注</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unmatchedList.map((item) => (
+                  <tr key={item.lead.id} className="border-t border-default hover:bg-hover transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Phone size={13} className="text-muted" />
+                        <span className="font-mono text-primary">{item.lead.phone}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {item.lead.couponCode ? (
+                        <div className="flex items-center gap-1.5">
+                          <Ticket size={13} className="text-muted" />
+                          <span className="font-mono text-secondary">{item.lead.couponCode}</span>
+                        </div>
+                      ) : <span className="text-muted">-</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Store size={13} className="text-muted" />
+                        <span className="text-primary">{item.storeName}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Clock size={13} className="text-muted" />
+                        <span className="text-secondary text-xs">{item.lead.time}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-primary">{item.lead.project ?? '-'}</td>
+                    <td className="px-4 py-3">
+                      {item.lead.remark ? (
+                        <div className="flex items-start gap-1.5">
+                          <MessageSquare size={13} className="text-purple-400 shrink-0 mt-0.5" />
+                          <span className="text-secondary text-xs break-all">{item.lead.remark}</span>
+                        </div>
+                      ) : <span className="text-muted">-</span>}
+                    </td>
+                  </tr>
+                ))}
+                {unmatchedList.length === 0 && (
+                  <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">太棒了，全部匹配成功！</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="flex justify-between pt-2">
+          <button
+            onClick={() => { setImported(false); setImportedLeads(null); setNewMatches(null); setFileName(''); setFileContent(''); setPreviewRows([]) }}
+            className="px-4 py-2 rounded-md bg-secondary border border-default text-sm text-primary hover:bg-hover transition-colors"
+          >
+            继续导入
+          </button>
+          <button
+            onClick={() => navigate('/verification')}
+            className="px-6 py-2 rounded-md text-sm font-medium bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors"
+          >
+            返回列表
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -254,18 +484,9 @@ export default function VerificationImport() {
               <FileDown size={14} />
               下载导入模板
             </a>
-            {imported && importStats && (
-              <span className="flex items-center gap-1.5 text-sm text-emerald-400">
-                <CheckCircle2 size={14} />
-                导入成功 {importStats.inserted} 条，自动匹配 {importStats.autoMatched} 条
-              </span>
-            )}
-            {imported && !importStats && (
-              <span className="flex items-center gap-1.5 text-sm text-emerald-400">
-                <CheckCircle2 size={14} />
-                导入成功
-              </span>
-            )}
+            <span className="text-xs text-muted">
+              来源：{LEAD_SOURCE_LABELS[MOCK_SOURCE[activeTab]]}
+            </span>
           </div>
 
           {previewRows.length > 0 && (
@@ -323,10 +544,10 @@ export default function VerificationImport() {
             <button onClick={() => navigate('/verification')} className="px-4 py-2 rounded-md bg-secondary border border-default text-sm text-primary hover:bg-hover transition-colors">取消</button>
             <button
               onClick={handleImport}
-              disabled={!fileName || imported}
+              disabled={!fileName}
               className={cn(
                 'px-6 py-2 rounded-md text-sm font-medium transition-colors',
-                fileName && !imported
+                fileName
                   ? 'bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]'
                   : 'bg-secondary text-muted cursor-not-allowed'
               )}

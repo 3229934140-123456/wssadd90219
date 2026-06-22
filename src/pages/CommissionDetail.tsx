@@ -1,13 +1,15 @@
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Check, AlertTriangle, ChevronDown, ChevronUp, Phone, Ticket, Store, Clock, MessageSquare, RefreshCw } from 'lucide-react'
 import { useAppStore } from '@/store'
 import StatusBadge from '@/components/StatusBadge'
 import {
   CATEGORY_LABELS,
   DEDUCTION_TYPE_LABELS,
   COMMISSION_STATUS_LABELS,
+  MATCH_TYPE_LABELS,
   type CommissionStatus,
+  type DeductionType,
 } from '@/types'
 
 const STATUS_VARIANT_MAP: Record<CommissionStatus, 'default' | 'warning' | 'info' | 'success' | 'danger'> = {
@@ -16,6 +18,12 @@ const STATUS_VARIANT_MAP: Record<CommissionStatus, 'default' | 'warning' | 'info
   reviewed: 'info',
   approved: 'success',
   rejected: 'danger',
+}
+
+const DEDUCTION_VARIANT_MAP: Record<DeductionType, 'bg-red-500/15 text-red-400' | 'bg-orange-500/15 text-orange-400' | 'bg-amber-500/15 text-amber-400'> = {
+  refund: 'bg-red-500/15 text-red-400',
+  duplicate: 'bg-orange-500/15 text-orange-400',
+  no_deal: 'bg-amber-500/15 text-amber-400',
 }
 
 const APPROVAL_STEPS = [
@@ -40,22 +48,25 @@ function getStepStatus(step: string, current: CommissionStatus): 'completed' | '
 export default function CommissionDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { commissions, getKOLById, getStoreById, updateCommission } = useAppStore()
+  const { commissions, getKOLById, getStoreById, getMatchById, getLeadById, updateCommission, recalcAllCommissionTotals } = useAppStore()
+
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const [expandedDeductions, setExpandedDeductions] = useState<Set<string>>(new Set())
 
   const commission = commissions.find((c) => c.id === id)
 
   const itemsTotal = useMemo(() => {
     if (!commission) return 0
-    return commission.items.reduce((s, i) => s + i.commissionAmount, 0)
+    return Math.round(commission.items.reduce((s, i) => s + i.commissionAmount, 0) * 100) / 100
   }, [commission])
 
   const deductionsTotal = useMemo(() => {
     if (!commission) return 0
-    return commission.deductions.reduce((s, d) => s + d.amount, 0)
+    return Math.round(commission.deductions.reduce((s, d) => s + d.amount, 0) * 100) / 100
   }, [commission])
 
   const netAmount = useMemo(() => {
-    return itemsTotal - deductionsTotal
+    return Math.round((itemsTotal - deductionsTotal) * 100) / 100
   }, [itemsTotal, deductionsTotal])
 
   if (!commission) {
@@ -70,8 +81,33 @@ export default function CommissionDetail() {
   }
 
   const kol = getKOLById(commission.kolId)
-  const store = getStoreById(commission.storeVisitId ? commission.storeVisitId.replace('sv', 'store') : '')
-  const displayAmount = Math.round(netAmount * 100) / 100
+  const storeVisit = useMemo(() => {
+    // storeVisitId 存在，但 store 要从 storeVisit 里拿
+    // 这里用 getStoreById 传 storeId 更准，但我们需要先找到 storeVisit
+    const { storeVisits } = useAppStore.getState()
+    return storeVisits.find((v) => v.id === commission.storeVisitId)
+  }, [commission.storeVisitId])
+  const store = storeVisit ? getStoreById(storeVisit.storeId) : undefined
+
+  const displayAmount = netAmount
+
+  function toggleItem(id: string) {
+    setExpandedItems((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleDeduction(id: string) {
+    setExpandedDeductions((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   function handleAction(newStatus: CommissionStatus) {
     updateCommission(commission.id, { status: newStatus })
@@ -79,6 +115,10 @@ export default function CommissionDetail() {
 
   function handleResolveDispute() {
     updateCommission(commission.id, { isDisputed: false, disputeReason: undefined })
+  }
+
+  function handleRecalc() {
+    recalcAllCommissionTotals()
   }
 
   return (
@@ -96,14 +136,20 @@ export default function CommissionDetail() {
             {store?.name}
           </p>
         </div>
-        <div className="text-right">
+        <div className="text-right flex flex-col items-end gap-2">
           <StatusBadge
             status={COMMISSION_STATUS_LABELS[commission.status]}
             colorMap={Object.fromEntries(
               Object.entries(COMMISSION_STATUS_LABELS).map(([k, v]) => [v, STATUS_VARIANT_MAP[k as CommissionStatus]])
             )}
           />
-          <p className="text-3xl font-mono font-bold text-primary mt-2">¥{displayAmount.toLocaleString()}</p>
+          <p className="text-3xl font-mono font-bold text-primary">¥{displayAmount.toLocaleString()}</p>
+          <button
+            onClick={handleRecalc}
+            className="flex items-center gap-1 text-xs text-muted hover:text-primary transition-colors"
+          >
+            <RefreshCw size={12} /> 重新校准金额
+          </button>
         </div>
       </div>
 
@@ -131,28 +177,107 @@ export default function CommissionDetail() {
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold text-primary mb-3">佣金明细</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-primary">佣金明细</h2>
+          <span className="text-xs text-muted">共 {commission.items.length} 条</span>
+        </div>
         <div className="overflow-x-auto rounded-lg border border-default">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary text-secondary text-left">
+                <th className="px-4 py-3 w-8"></th>
                 <th className="px-4 py-3 font-medium">项目类别</th>
                 <th className="px-4 py-3 font-medium">成交金额</th>
                 <th className="px-4 py-3 font-medium">提成比例</th>
                 <th className="px-4 py-3 font-medium">佣金金额</th>
+                <th className="px-4 py-3 font-medium">状态</th>
               </tr>
             </thead>
             <tbody>
-              {commission.items.map((item) => (
-                <tr key={item.id} className="border-t border-default bg-card">
-                  <td className="px-4 py-3 text-primary">{CATEGORY_LABELS[item.projectCategory]}</td>
-                  <td className="px-4 py-3 text-primary font-mono">¥{item.baseAmount.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-primary font-mono">{(item.rate * 100).toFixed(1)}%</td>
-                  <td className="px-4 py-3 text-primary font-mono">¥{item.commissionAmount.toLocaleString()}</td>
-                </tr>
-              ))}
+              {commission.items.map((item) => {
+                const match = getMatchById(item.matchResultId)
+                const lead = match ? getLeadById(match.leadId) : undefined
+                const isExpanded = expandedItems.has(item.id)
+                const isRefunded = match?.isRefunded
+                const isDuplicate = match?.isDuplicate
+                const hasIssue = isRefunded || isDuplicate
+                return (
+                  <>
+                    <tr key={item.id} className={`border-t border-default bg-card ${isExpanded ? 'bg-hover' : 'hover:bg-hover'} transition-colors cursor-pointer`} onClick={() => toggleItem(item.id)}>
+                      <td className="px-4 py-3 text-muted">
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </td>
+                      <td className="px-4 py-3 text-primary">{CATEGORY_LABELS[item.projectCategory]}</td>
+                      <td className="px-4 py-3 text-primary font-mono">¥{item.baseAmount.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-primary font-mono">{(item.rate * 100).toFixed(1)}%</td>
+                      <td className="px-4 py-3 text-primary font-mono">¥{item.commissionAmount.toLocaleString()}</td>
+                      <td className="px-4 py-3">
+                        {isRefunded && (
+                          <span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-red-500/15 text-red-400">已退款</span>
+                        )}
+                        {isDuplicate && (
+                          <span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-orange-500/15 text-orange-400">重复</span>
+                        )}
+                        {!hasIssue && (
+                          <span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-400">正常</span>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && match && (
+                      <tr key={`${item.id}-expand`} className="bg-card">
+                        <td colSpan={6} className="px-8 py-3 border-t border-dashed border-[var(--color-border)]">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                            <div className="flex items-center gap-2">
+                              <Phone size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">手机号：</span>
+                              <span className="text-primary font-mono">{lead?.phone ?? '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Ticket size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">券码：</span>
+                              <span className="text-primary font-mono">{lead?.couponCode ?? '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Store size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">门店：</span>
+                              <span className="text-primary">{store?.name ?? '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Clock size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">成交时间：</span>
+                              <span className="text-primary">{lead?.time ?? '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <MessageSquare size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">匹配方式：</span>
+                              <span className="text-primary">{MATCH_TYPE_LABELS[match.matchType]}</span>
+                            </div>
+                            <div className="flex items-start gap-2 col-span-2 md:col-span-3">
+                              <MessageSquare size={14} className="text-muted shrink-0 mt-0.5" />
+                              <span className="text-secondary">客服备注：</span>
+                              <span className="text-primary break-all">{lead?.remark ?? '-'}</span>
+                            </div>
+                            {isRefunded && (
+                              <div className="flex items-center gap-2 col-span-2 md:col-span-3">
+                                <AlertTriangle size={14} className="text-red-400 shrink-0" />
+                                <span className="text-red-400 text-xs">该笔成交已退款，将在扣减项中对应扣除</span>
+                              </div>
+                            )}
+                            {isDuplicate && (
+                              <div className="flex items-center gap-2 col-span-2 md:col-span-3">
+                                <AlertTriangle size={14} className="text-orange-400 shrink-0" />
+                                <span className="text-orange-400 text-xs">跨门店重复线索，将在扣减项中对应扣除</span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )
+              })}
               {commission.items.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted">暂无明细</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">暂无明细</td></tr>
               )}
             </tbody>
           </table>
@@ -160,30 +285,81 @@ export default function CommissionDetail() {
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold text-primary mb-3">扣减明细</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-primary">扣减明细</h2>
+          <span className="text-xs text-muted">共 {commission.deductions.length} 条</span>
+        </div>
         <div className="overflow-x-auto rounded-lg border border-default">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary text-secondary text-left">
+                <th className="px-4 py-3 w-8"></th>
                 <th className="px-4 py-3 font-medium">扣减类型</th>
                 <th className="px-4 py-3 font-medium">金额</th>
                 <th className="px-4 py-3 font-medium">说明</th>
               </tr>
             </thead>
             <tbody>
-              {commission.deductions.map((d) => (
-                <tr key={d.id} className="border-t border-default bg-card">
-                  <td className="px-4 py-3 text-primary">
-                    <span className="inline-block rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-500/15 text-red-400">
-                      {DEDUCTION_TYPE_LABELS[d.type]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-primary font-mono text-red-400">-¥{d.amount.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-secondary">{d.description}</td>
-                </tr>
-              ))}
+              {commission.deductions.map((d) => {
+                const match = d.relatedMatchId ? getMatchById(d.relatedMatchId) : undefined
+                const lead = match ? getLeadById(match.leadId) : undefined
+                const isExpanded = expandedDeductions.has(d.id)
+                return (
+                  <>
+                    <tr key={d.id} className={`border-t border-default bg-card ${isExpanded ? 'bg-hover' : 'hover:bg-hover'} transition-colors cursor-pointer`} onClick={() => toggleDeduction(d.id)}>
+                      <td className="px-4 py-3 text-muted">
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${DEDUCTION_VARIANT_MAP[d.type]}`}>
+                          {DEDUCTION_TYPE_LABELS[d.type]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-primary font-mono text-red-400">-¥{d.amount.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-secondary">{d.description}</td>
+                    </tr>
+                    {isExpanded && match && (
+                      <tr key={`${d.id}-expand`} className="bg-card">
+                        <td colSpan={4} className="px-8 py-3 border-t border-dashed border-[var(--color-border)]">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                            <div className="flex items-center gap-2">
+                              <Phone size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">手机号：</span>
+                              <span className="text-primary font-mono">{lead?.phone ?? '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Ticket size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">券码：</span>
+                              <span className="text-primary font-mono">{lead?.couponCode ?? '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Store size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">门店：</span>
+                              <span className="text-primary">{store?.name ?? '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Clock size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">成交时间：</span>
+                              <span className="text-primary">{lead?.time ?? '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <MessageSquare size={14} className="text-muted shrink-0" />
+                              <span className="text-secondary">项目：</span>
+                              <span className="text-primary">{CATEGORY_LABELS[match.projectCategory]}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-secondary">对应佣金：</span>
+                              <span className="text-primary font-mono">¥{d.amount.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )
+              })}
               {commission.deductions.length === 0 && (
-                <tr><td colSpan={3} className="px-4 py-8 text-center text-muted">暂无扣减</td></tr>
+                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted">暂无扣减</td></tr>
               )}
             </tbody>
           </table>

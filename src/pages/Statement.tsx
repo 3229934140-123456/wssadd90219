@@ -1,28 +1,51 @@
 import { useMemo } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, FileText } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { CATEGORY_LABELS, DEDUCTION_TYPE_LABELS } from '@/types'
-import type { ProjectCategory } from '@/types'
+import type { ProjectCategory, CommissionCalc } from '@/types'
 
 export default function Statement() {
-  const { kolId } = useParams<{ kolId: string }>()
+  const { kolId, commissionId } = useParams<{ kolId?: string; commissionId?: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { getKOLById, getCommissionsByKOL } = useAppStore()
+  const { getKOLById, getCommissionsByKOL, commissions } = useAppStore()
+
+  const isSingle = !!commissionId
 
   const period = searchParams.get('period') ?? ''
-  const kol = getKOLById(kolId ?? '')
-  const commissions = getCommissionsByKOL(kolId ?? '').filter((c) => c.period === period)
 
-  const allItems = commissions.flatMap((c) => c.items)
-  const allDeductions = commissions.flatMap((c) => c.deductions)
-  const hasDispute = commissions.some((c) => c.isDisputed)
+  let kolName = ''
+  let statementPeriod = ''
+  let commissionList: CommissionCalc[] = []
+
+  if (isSingle) {
+    const c = commissions.find((x) => x.id === commissionId)
+    if (c) {
+      commissionList = [c]
+      const kol = getKOLById(c.kolId)
+      kolName = kol?.name ?? '-'
+      statementPeriod = c.period
+    }
+  } else {
+    const kol = getKOLById(kolId ?? '')
+    kolName = kol?.name ?? '-'
+    statementPeriod = period
+    commissionList = getCommissionsByKOL(kolId ?? '').filter((c) => c.period === period)
+  }
+
+  const allItems = commissionList.flatMap((c) => c.items)
+  const allDeductions = commissionList.flatMap((c) => c.deductions)
+  const hasDispute = commissionList.some((c) => c.isDisputed)
 
   const summary = useMemo(() => {
     const totalCommission = allItems.reduce((s, i) => s + i.commissionAmount, 0)
     const totalDeductions = allDeductions.reduce((s, d) => s + d.amount, 0)
-    return { totalCommission, totalDeductions, netPayable: totalCommission - totalDeductions }
+    return {
+      totalCommission: Math.round(totalCommission * 100) / 100,
+      totalDeductions: Math.round(totalDeductions * 100) / 100,
+      netPayable: Math.round((totalCommission - totalDeductions) * 100) / 100,
+    }
   }, [allItems, allDeductions])
 
   const categoryTotals = useMemo(() => {
@@ -43,10 +66,10 @@ export default function Statement() {
     return Array.from(map.entries()).map(([category, data]) => ({ category, ...data }))
   }, [allItems])
 
-  if (!kol) {
+  if (!isSingle && !kolId) {
     return (
       <div className="p-6 text-center" style={{ color: 'var(--color-text-muted)' }}>
-        未找到达人信息
+        参数错误
       </div>
     )
   }
@@ -64,7 +87,19 @@ export default function Statement() {
       <div className="max-w-3xl mx-auto bg-white text-gray-900 rounded-xl shadow-lg p-8 space-y-6">
         <div className="text-center border-b border-gray-200 pb-4">
           <h1 className="text-2xl font-bold">对账单</h1>
-          <p className="mt-2 text-gray-600">达人：{kol.name} | 期间：{period}</p>
+          <p className="mt-2 text-gray-600">
+            达人：{kolName} | 期间：{statementPeriod}
+            {isSingle && commissionList[0] && (
+              <span className="ml-2 inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                <FileText size={12} /> 单据号：{commissionId}
+              </span>
+            )}
+          </p>
+          {!isSingle && (
+            <p className="mt-1 text-xs text-gray-400">
+              本月共 {commissionList.length} 张试算单合并
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-4 text-center">
@@ -156,7 +191,7 @@ export default function Statement() {
         {hasDispute && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
             <h3 className="text-sm font-semibold text-amber-800 mb-2">争议事项</h3>
-            {commissions
+            {commissionList
               .filter((c) => c.isDisputed)
               .map((c) => (
                 <p key={c.id} className="text-sm text-amber-700">{c.disputeReason}</p>
