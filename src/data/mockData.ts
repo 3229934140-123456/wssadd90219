@@ -231,11 +231,12 @@ export const mockCommissions: CommissionCalc[] = [
       { id: 'ci-1', matchResultId: 'match-1', projectCategory: 'filler', rate: 0.12, baseAmount: 3980, commissionAmount: 477.6 },
       { id: 'ci-2', matchResultId: 'match-2', projectCategory: 'skin', rate: 0.08, baseAmount: 1280, commissionAmount: 102.4 },
       { id: 'ci-3', matchResultId: 'match-3', projectCategory: 'filler', rate: 0.12, baseAmount: 6800, commissionAmount: 816 },
+      { id: 'ci-8', matchResultId: 'match-7', projectCategory: 'laser', rate: 0.08, baseAmount: 19200, commissionAmount: 1536 },
     ],
     deductions: [
-      { id: 'di-1', type: 'refund', amount: 1536, description: '热玛吉项目退款扣减', relatedMatchId: 'match-7' },
+      { id: 'di-1', type: 'refund', amount: 1536, description: '热玛吉项目退款扣减：手机号138****8821', relatedMatchId: 'match-7' },
     ],
-    totalAmount: 3472,
+    totalAmount: 1396,
     status: 'submitted',
     createdAt: '2026-06-01',
     isDisputed: false,
@@ -250,7 +251,7 @@ export const mockCommissions: CommissionCalc[] = [
       { id: 'ci-5', matchResultId: 'match-8', projectCategory: 'laser', rate: 0.08, baseAmount: 2980, commissionAmount: 238.4 },
     ],
     deductions: [
-      { id: 'di-2', type: 'duplicate', amount: 238.4, description: '跨门店重复线索扣减：同一券码GQ20260527001在store-3重复核销' },
+      { id: 'di-2', type: 'duplicate', amount: 238.4, description: '跨门店重复线索扣减：同一券码GQ20260527001在store-3重复核销', relatedMatchId: 'match-8' },
     ],
     totalAmount: 1024,
     status: 'reviewed',

@@ -17,7 +17,7 @@ const COLUMNS: Record<LeadType, string[]> = {
   coupon: ['手机号', '券码', '门店', '核销时间', '项目', '金额', '来源'],
   consultation: ['手机号', '门店', '预约时间', '项目', '来源'],
   visit: ['手机号', '门店', '到院时间', '医生', '来源'],
-  transaction: ['手机号', '门店', '成交时间', '项目', '金额', '来源'],
+  transaction: ['手机号', '门店', '成交时间', '项目', '金额', '客服备注', '来源'],
 }
 
 const MOCK_SOURCE: Record<LeadType, LeadSource> = {
@@ -160,6 +160,7 @@ export default function VerificationImport() {
         record.project = row[3]?.trim() || undefined
         const amt = parseFloat(row[4] ?? '')
         record.amount = isNaN(amt) ? undefined : amt
+        record.remark = row[5]?.trim() || undefined
       }
       if (record.phone) {
         result.push(record as LeadRecord)
@@ -187,7 +188,7 @@ export default function VerificationImport() {
         ...(activeTab === 'coupon' ? { couponCode: `GQ${dayjs().format('YYYYMMDD')}${String(i + 1).padStart(3, '0')}`, project: '导入示例项目', amount: 1000 * (i + 1) } : {}),
         ...(activeTab === 'consultation' ? { project: '导入示例项目' } : {}),
         ...(activeTab === 'visit' ? { doctor: '导入示例医生' } : {}),
-        ...(activeTab === 'transaction' ? { project: '导入示例项目', amount: 5000 * (i + 1) } : {}),
+        ...(activeTab === 'transaction' ? { project: '导入示例项目', amount: 5000 * (i + 1), remark: '抖音@美少女探店日记推荐' } : {}),
       }))
     }
     addLeads(records)

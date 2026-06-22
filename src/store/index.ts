@@ -240,29 +240,45 @@ export const useAppStore = create<AppState>()(
         const deductions: DeductionItem[] = []
 
         for (const match of periodMatches) {
+          const rate = tierMap.get(match.projectCategory) ?? 0.05
+          const baseAmt = Math.max(match.transactionAmount, 0)
+          const commissionAmt = baseAmt * rate
+          const lead = state.leads.find((l) => l.id === match.leadId)
+          const catLabel = (() => {
+            const n = (lead?.project ?? '').toLowerCase()
+            if (n.includes('玻尿') || n.includes('填充') || n.includes('隆鼻')) return '玻尿酸'
+            if (n.includes('热玛吉') || n.includes('激光') || n.includes('光电') || n.includes('光子') || n.includes('脱毛')) return '光电'
+            if (n.includes('水光') || n.includes('皮肤') || n.includes('嫩肤')) return '皮肤管理'
+            if (n.includes('手术')) return '手术类'
+            return '其他'
+          })()
+
+          items.push({
+            id: generateId('ci'),
+            matchResultId: match.id,
+            projectCategory: match.projectCategory,
+            rate,
+            baseAmount: baseAmt,
+            commissionAmount: commissionAmt,
+          })
+
           if (match.isRefunded) {
-            const rate = tierMap.get(match.projectCategory) ?? 0.05
             deductions.push({
               id: generateId('ded'),
               type: 'refund',
-              amount: match.transactionAmount * rate,
-              description: `${detectProjectCategory.name}项目退款扣减`,
+              amount: commissionAmt,
+              description: `${catLabel}项目退款扣减：手机号${lead?.phone ?? ''}`,
               relatedMatchId: match.id,
             })
-            continue
-          }
-          if (match.isDuplicate) {
-            const rate = tierMap.get(match.projectCategory) ?? 0.05
+          } else if (match.isDuplicate) {
             deductions.push({
               id: generateId('ded'),
               type: 'duplicate',
-              amount: match.transactionAmount * rate,
-              description: `跨门店重复线索扣减：手机号${state.leads.find((l) => l.id === match.leadId)?.phone ?? ''}`,
+              amount: commissionAmt,
+              description: `跨门店重复线索扣减：手机号${lead?.phone ?? ''}`,
               relatedMatchId: match.id,
             })
-            continue
-          }
-          if (match.transactionAmount <= 0) {
+          } else if (match.transactionAmount <= 0) {
             deductions.push({
               id: generateId('ded'),
               type: 'no_deal',
@@ -270,18 +286,7 @@ export const useAppStore = create<AppState>()(
               description: '未成单扣减',
               relatedMatchId: match.id,
             })
-            continue
           }
-
-          const rate = tierMap.get(match.projectCategory) ?? 0.05
-          items.push({
-            id: generateId('ci'),
-            matchResultId: match.id,
-            projectCategory: match.projectCategory,
-            rate,
-            baseAmount: match.transactionAmount,
-            commissionAmount: match.transactionAmount * rate,
-          })
         }
 
         const itemsTotal = items.reduce((s, i) => s + i.commissionAmount, 0)
