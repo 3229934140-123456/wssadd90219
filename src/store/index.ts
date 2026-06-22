@@ -322,12 +322,13 @@ export const useAppStore = create<AppState>()(
       getLeadById: (id) => get().leads.find((l) => l.id === id),
       recalcAllCommissionTotals: () => {
         const state = get()
+        const now = dayjs().format('YYYY-MM-DD HH:mm')
         const updated = state.commissions.map((c) => {
           const itemsTotal = c.items.reduce((s, i) => s + i.commissionAmount, 0)
           const deductionsTotal = c.deductions.reduce((s, d) => s + d.amount, 0)
           const totalAmount = Math.round((itemsTotal - deductionsTotal) * 100) / 100
-          if (Math.abs(c.totalAmount - totalAmount) < 0.01) return c
-          return { ...c, totalAmount }
+          if (Math.abs(c.totalAmount - totalAmount) < 0.01 && c.recalcAt) return c
+          return { ...c, totalAmount, recalcAt: now }
         })
         if (updated.some((c, i) => c !== state.commissions[i])) {
           set({ commissions: updated })

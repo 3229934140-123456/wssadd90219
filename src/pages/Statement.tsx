@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText } from 'lucide-react'
+import { ArrowLeft, FileText, Clock, ShieldCheck, CreditCard, UserCheck, RotateCcw } from 'lucide-react'
 import { useAppStore } from '@/store'
-import { CATEGORY_LABELS, DEDUCTION_TYPE_LABELS } from '@/types'
+import { CATEGORY_LABELS, DEDUCTION_TYPE_LABELS, COMMISSION_STATUS_LABELS } from '@/types'
 import type { ProjectCategory, CommissionCalc } from '@/types'
 
 export default function Statement() {
@@ -12,16 +12,19 @@ export default function Statement() {
   const { getKOLById, getCommissionsByKOL, commissions } = useAppStore()
 
   const isSingle = !!commissionId
+  const fromFinance = searchParams.get('from') === 'finance'
 
   const period = searchParams.get('period') ?? ''
 
   let kolName = ''
   let statementPeriod = ''
   let commissionList: CommissionCalc[] = []
+  let displayCommission: CommissionCalc | null = null
 
   if (isSingle) {
     const c = commissions.find((x) => x.id === commissionId)
     if (c) {
+      displayCommission = c
       commissionList = [c]
       const kol = getKOLById(c.kolId)
       kolName = kol?.name ?? '-'
@@ -37,6 +40,10 @@ export default function Statement() {
   const allItems = commissionList.flatMap((c) => c.items)
   const allDeductions = commissionList.flatMap((c) => c.deductions)
   const hasDispute = commissionList.some((c) => c.isDisputed)
+  const recalcAt = useMemo(() => {
+    const dates = commissionList.map((c) => c.recalcAt).filter(Boolean) as string[]
+    return dates.length > 0 ? dates.sort().reverse()[0] : null
+  }, [commissionList])
 
   const summary = useMemo(() => {
     const totalCommission = allItems.reduce((s, i) => s + i.commissionAmount, 0)
@@ -74,22 +81,73 @@ export default function Statement() {
     )
   }
 
+  const statusLabel = displayCommission ? COMMISSION_STATUS_LABELS[displayCommission.status] : null
+
+  function handleBack() {
+    if (fromFinance) {
+      navigate('/finance')
+    } else {
+      navigate(-1)
+    }
+  }
+
   return (
     <div className="p-6 min-h-screen" style={{ background: 'var(--color-bg-primary)' }}>
-      <button
-        onClick={() => navigate(-1)}
-        className="inline-flex items-center gap-2 text-sm mb-6 transition-colors"
-        style={{ color: 'var(--color-accent)' }}
-      >
-        <ArrowLeft size={16} /> 返回
-      </button>
+      <div className="flex items-center justify-between mb-6">
+        <button
+          onClick={handleBack}
+          className="inline-flex items-center gap-2 text-sm transition-colors"
+          style={{ color: 'var(--color-accent)' }}
+        >
+          <ArrowLeft size={16} />
+          {fromFinance ? '返回财务列表' : '返回'}
+        </button>
+        {isSingle && displayCommission && (
+          <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            <div className="flex items-center gap-1.5">
+              <Clock size={12} />
+              创建时间：{displayCommission.createdAt}
+            </div>
+            {statusLabel && (
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck size={12} />
+                状态：{statusLabel}
+              </div>
+            )}
+            {displayCommission.approver && (
+              <div className="flex items-center gap-1.5">
+                <UserCheck size={12} />
+                审批人：{displayCommission.approver}
+              </div>
+            )}
+            {displayCommission.approvedAt && (
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck size={12} />
+                终审时间：{displayCommission.approvedAt}
+              </div>
+            )}
+            {displayCommission.paidAt && (
+              <div className="flex items-center gap-1.5">
+                <CreditCard size={12} />
+                打款时间：{displayCommission.paidAt}
+              </div>
+            )}
+            {recalcAt && (
+              <div className="flex items-center gap-1.5" style={{ color: 'var(--color-accent)' }}>
+                <RotateCcw size={12} />
+                最后校准：{recalcAt}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="max-w-3xl mx-auto bg-white text-gray-900 rounded-xl shadow-lg p-8 space-y-6">
         <div className="text-center border-b border-gray-200 pb-4">
           <h1 className="text-2xl font-bold">对账单</h1>
           <p className="mt-2 text-gray-600">
             达人：{kolName} | 期间：{statementPeriod}
-            {isSingle && commissionList[0] && (
+            {isSingle && displayCommission && (
               <span className="ml-2 inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
                 <FileText size={12} /> 单据号：{commissionId}
               </span>
@@ -100,7 +158,56 @@ export default function Statement() {
               本月共 {commissionList.length} 张试算单合并
             </p>
           )}
+          {recalcAt && (
+            <p className="mt-2 text-xs text-emerald-600 flex items-center justify-center gap-1">
+              <RotateCcw size={12} />
+              最后校准时间：{recalcAt}
+            </p>
+          )}
         </div>
+
+        {!isSingle && commissionList.length > 0 && (
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">合并试算单明细</h3>
+            <div className="space-y-2">
+              {commissionList.map((c) => (
+                <div key={c.id} className="flex items-center justify-between text-xs bg-white rounded-md px-3 py-2 border border-gray-200">
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-gray-500">{c.id}</span>
+                    <span className="text-gray-600">
+                      {c.items.length} 条明细 · {c.deductions.length} 条扣减
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full ${
+                      c.status === 'paid' ? 'bg-blue-100 text-blue-700' :
+                      c.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                      c.status === 'reviewed' ? 'bg-purple-100 text-purple-700' :
+                      c.status === 'submitted' ? 'bg-amber-100 text-amber-700' :
+                      c.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {c.status === 'paid' ? '已打款' : COMMISSION_STATUS_LABELS[c.status]}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigate(`/commission/${c.id}`)}
+                      className="text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      试算单
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      onClick={() => navigate(`/statement/single/${c.id}`)}
+                      className="text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      单据对账单
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-4 text-center">
           <div className="p-3 bg-gray-50 rounded-lg">

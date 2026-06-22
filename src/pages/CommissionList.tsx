@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Calculator, Plus, X, AlertTriangle } from 'lucide-react'
+import { Calculator, Plus, X, AlertTriangle, Calendar } from 'lucide-react'
 import { useAppStore } from '@/store'
 import PageHeader from '@/components/PageHeader'
 import StatusBadge from '@/components/StatusBadge'
@@ -15,9 +15,10 @@ const STATUS_VARIANT_MAP: Record<CommissionStatus, 'default' | 'warning' | 'info
   reviewed: 'info',
   approved: 'success',
   rejected: 'danger',
+  paid: 'success',
 }
 
-const STATUS_TABS: (CommissionStatus | 'all')[] = ['all', 'draft', 'submitted', 'reviewed', 'approved', 'rejected']
+const STATUS_TABS: (CommissionStatus | 'all')[] = ['all', 'draft', 'submitted', 'reviewed', 'approved', 'rejected', 'paid']
 const TAB_LABELS: Record<CommissionStatus | 'all', string> = {
   all: '全部',
   draft: '草稿',
@@ -25,6 +26,7 @@ const TAB_LABELS: Record<CommissionStatus | 'all', string> = {
   reviewed: '已复核',
   approved: '已终审',
   rejected: '已驳回',
+  paid: '已打款',
 }
 
 export default function CommissionList() {
@@ -106,6 +108,7 @@ export default function CommissionList() {
               <th className="px-4 py-3 font-medium">明细数</th>
               <th className="px-4 py-3 font-medium">扣减数</th>
               <th className="px-4 py-3 font-medium">应结金额</th>
+              <th className="px-4 py-3 font-medium">最后校准</th>
               <th className="px-4 py-3 font-medium">状态</th>
               <th className="px-4 py-3 font-medium">争议</th>
               <th className="px-4 py-3 font-medium">操作</th>
@@ -120,6 +123,16 @@ export default function CommissionList() {
                 <td className="px-4 py-3 text-primary font-mono">{c.items.length}</td>
                 <td className="px-4 py-3 text-primary font-mono">{c.deductions.length}</td>
                 <td className="px-4 py-3 text-primary font-mono font-semibold">¥{c.totalAmount.toLocaleString()}</td>
+                <td className="px-4 py-3 text-xs text-muted flex items-center gap-1">
+                  {c.recalcAt ? (
+                    <>
+                      <Calendar size={12} />
+                      {c.recalcAt}
+                    </>
+                  ) : (
+                    '-'
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <StatusBadge
                     status={COMMISSION_STATUS_LABELS[c.status]}
@@ -144,7 +157,7 @@ export default function CommissionList() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-12 text-center text-muted">暂无数据</td></tr>
+              <tr><td colSpan={10} className="px-4 py-12 text-center text-muted">暂无数据</td></tr>
             )}
           </tbody>
         </table>

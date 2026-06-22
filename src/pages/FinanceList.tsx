@@ -30,14 +30,14 @@ export default function FinanceList() {
   const filtered = commissions.filter((c) => {
     if (activeTab === 'reviewed') return c.status === 'reviewed'
     if (activeTab === 'approved') return c.status === 'approved' && !c.paidAt
-    if (activeTab === 'paid') return c.status === 'approved' && !!c.paidAt
+    if (activeTab === 'paid') return c.status === 'paid' || (c.status === 'approved' && !!c.paidAt)
     return false
   })
 
   const tabCount = (tab: FinanceTab) => commissions.filter((c) => {
     if (tab === 'reviewed') return c.status === 'reviewed'
     if (tab === 'approved') return c.status === 'approved' && !c.paidAt
-    return c.status === 'approved' && !!c.paidAt
+    return c.status === 'paid' || (c.status === 'approved' && !!c.paidAt)
   }).length
 
   function handleApprove(id: string) {
@@ -53,11 +53,14 @@ export default function FinanceList() {
   }
 
   function handleConfirmPay(id: string) {
-    updateCommission(id, { paidAt: new Date().toISOString().slice(0, 10) })
+    updateCommission(id, {
+      status: 'paid',
+      paidAt: new Date().toISOString().slice(0, 10),
+    })
     setConfirmId(null)
   }
 
-  const colSpan = activeTab === 'reviewed' ? 6 : 6
+  const colSpan = 7
 
   return (
     <div className="p-6 space-y-6">
@@ -131,6 +134,13 @@ export default function FinanceList() {
                     {activeTab === 'reviewed' && (
                       <>
                         <button
+                          onClick={() => navigate(`/statement/single/${c.id}?from=finance`)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                          style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                        >
+                          <FileText size={13} /> 查看单据
+                        </button>
+                        <button
                           onClick={() => handleApprove(c.id)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25 transition-colors"
                         >
@@ -147,23 +157,23 @@ export default function FinanceList() {
                     {activeTab === 'approved' && (
                       <>
                         <button
+                          onClick={() => navigate(`/statement/single/${c.id}?from=finance`)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                          style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                        >
+                          <FileText size={13} /> 查看单据
+                        </button>
+                        <button
                           onClick={() => setConfirmId(c.id)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/20 hover:bg-blue-500/25 transition-colors"
                         >
                           <CreditCard size={13} /> 确认打款
                         </button>
-                        <button
-                          onClick={() => navigate(`/statement/single/${c.id}`)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                          style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
-                        >
-                          <FileText size={13} /> 查看对账单
-                        </button>
                       </>
                     )}
                     {activeTab === 'paid' && (
                       <button
-                        onClick={() => navigate(`/statement/single/${c.id}`)}
+                        onClick={() => navigate(`/statement/single/${c.id}?from=finance`)}
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
                         style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
                       >

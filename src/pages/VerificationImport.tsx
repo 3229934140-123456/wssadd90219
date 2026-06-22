@@ -210,6 +210,7 @@ export default function VerificationImport() {
       const lead = importedLeads.find((l) => l.id === m.leadId)
       const kol = kols.find((k) => k.id === m.kolId)
       const store = stores.find((s) => s.id === m.storeId)
+      const primaryAccount = kol?.platforms[0]
       let matchBasis = ''
       if (m.matchType === 'coupon') {
         matchBasis = `券码 ${lead?.couponCode ?? '-'}`
@@ -224,6 +225,7 @@ export default function VerificationImport() {
         match: m,
         lead,
         kolName: kol?.name ?? '-',
+        kolAccount: primaryAccount ? `${primaryAccount.type === 'douyin' ? '抖音' : primaryAccount.type === 'xiaohongshu' ? '小红书' : primaryAccount.type === 'kuaishou' ? '快手' : 'B站'} @${primaryAccount.account}` : '-',
         storeName: store?.name ?? '-',
         matchBasis,
       }
@@ -302,6 +304,7 @@ export default function VerificationImport() {
               <thead>
                 <tr className="bg-secondary text-secondary">
                   <th className="px-4 py-3 text-left font-medium">达人</th>
+                  <th className="px-4 py-3 text-left font-medium">账号</th>
                   <th className="px-4 py-3 text-left font-medium">匹配方式</th>
                   <th className="px-4 py-3 text-left font-medium">匹配依据</th>
                   <th className="px-4 py-3 text-left font-medium">门店</th>
@@ -311,12 +314,20 @@ export default function VerificationImport() {
               </thead>
               <tbody>
                 {matchedList.map((item) => (
-                  <tr key={item.match.id} className="border-t border-default hover:bg-hover transition-colors">
+                  <tr key={item.match.id} className={`border-t border-default hover:bg-hover transition-colors ${item.match.matchType === 'remark' ? 'bg-purple-500/5' : ''}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <Users size={14} className="text-emerald-400" />
-                        <span className="text-primary font-medium">{item.kolName}</span>
+                        <Users size={14} className={item.match.matchType === 'remark' ? 'text-purple-400' : 'text-emerald-400'} />
+                        <span className={`font-medium ${item.match.matchType === 'remark' ? 'text-purple-300 font-bold' : 'text-primary'}`}>
+                          {item.kolName}
+                          {item.match.matchType === 'remark' && <Sparkles size={12} className="inline ml-1 text-purple-400" />}
+                        </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`font-mono text-xs ${item.match.matchType === 'remark' ? 'text-purple-300 font-bold bg-purple-500/15 px-2 py-0.5 rounded' : 'text-secondary'}`}>
+                        {item.kolAccount}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn(
@@ -344,7 +355,7 @@ export default function VerificationImport() {
                   </tr>
                 ))}
                 {matchedList.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">暂无匹配成功的线索</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-12 text-center text-muted">暂无匹配成功的线索</td></tr>
                 )}
               </tbody>
             </table>

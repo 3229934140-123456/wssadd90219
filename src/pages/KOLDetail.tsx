@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Pencil, X, User, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Pencil, X, User, AlertTriangle, FileText, Calendar } from 'lucide-react'
 import { useAppStore } from '@/store'
+import dayjs from 'dayjs'
+import StatusBadge from '@/components/StatusBadge'
 import {
   PLATFORM_LABELS, CATEGORY_LABELS, VISIT_STATUS_LABELS,
   COMMISSION_STATUS_LABELS, PRICING_MODEL_LABELS,
   type ProjectCategory,
+  type CommissionStatus,
 } from '@/types'
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -35,6 +38,15 @@ const VISIT_STATUS_STYLES: Record<string, string> = {
   completed: 'bg-emerald-900/40 text-emerald-400',
 }
 
+const STATUS_VARIANT_MAP: Record<CommissionStatus, 'default' | 'warning' | 'info' | 'success' | 'danger'> = {
+  draft: 'default',
+  submitted: 'warning',
+  reviewed: 'info',
+  approved: 'success',
+  rejected: 'danger',
+  paid: 'success',
+}
+
 function formatNumber(n: number) {
   if (n >= 10000) return (n / 10000).toFixed(1) + '万'
   return n.toLocaleString()
@@ -57,6 +69,25 @@ export default function KOLDetail() {
     kol?.commissionTiers.forEach((t) => { rates[t.category] = t.rate })
     return rates
   })
+
+  const availablePeriods = useMemo(() => {
+    return [...new Set(commissions.map((c) => c.period))].sort().reverse()
+  }, [commissions])
+
+  const [statementPeriod, setStatementPeriod] = useState(() => {
+    return availablePeriods[0] ?? dayjs().format('YYYY-MM')
+  })
+
+  const periodCommissions = useMemo(() => {
+    return commissions.filter((c) => c.period === statementPeriod)
+  }, [commissions, statementPeriod])
+
+  const periodSummary = useMemo(() => {
+    const itemsTotal = periodCommissions.reduce((s, c) => s + c.items.reduce((s2, i) => s2 + i.commissionAmount, 0), 0)
+    const deductionsTotal = periodCommissions.reduce((s, c) => s + c.deductions.reduce((s2, d) => s2 + d.amount, 0), 0)
+    const total = Math.round((itemsTotal - deductionsTotal) * 100) / 100
+    return { total, itemsTotal, deductionsTotal }
+  }, [periodCommissions])
 
   if (!kol) {
     return (
@@ -125,7 +156,7 @@ export default function KOLDetail() {
         </div>
         <div className="grid grid-cols-5 gap-3">
           {(editingTiers ? CATEGORIES : kol.commissionTiers).map((tier, i) => {
-            const cat = tier.category
+            const cat = 'category' in tier ? tier.category : tier
             const rate = editingTiers ? tierRates[cat] : (kol.commissionTiers.find((t) => t.category === cat)?.rate ?? 0)
             return (
               <div key={cat} className="rounded-lg p-4 text-center" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
@@ -181,7 +212,89 @@ export default function KOLDetail() {
       </div>
 
       <div className="rounded-xl p-6" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
-        <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--color-text-primary)' }}>佣金历史</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>佣金历史</h3>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Calendar size={14} className="text-muted" />
+              <select
+                value={statementPeriod}
+                onChange={(e) => setStatementPeriod(e.target.value)}
+                className="bg-card border border-default rounded-md px-2 py-1 text-xs text-primary focus:outline-none focus:border-[var(--color-accent)]"
+              >
+                {availablePeriods.length > 0 ? (
+                  availablePeriods.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))
+                ) : (
+                  <option value={statementPeriod}>{statementPeriod}</option>
+                )}
+              </select>
+            </div>
+            <button
+              onClick={() => navigate(`/statement/${kol.id}?period=${statementPeriod}`)}
+              disabled={periodCommissions.length === 0}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)]/15 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/25 disabled:opacity-50 transition-colors"
+            >
+              <FileText size={12} /> 月度汇总对账
+            </button>
+          </div>
+        </div>
+
+        {periodCommissions.length > 0 && (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="p-4 rounded-lg border border-default" style={{ background: 'var(--color-bg-card)' }}>
+                <div className="text-xs text-secondary">明细合计</div>
+                <div className="text-xl font-bold font-mono text-primary">¥{periodSummary.itemsTotal.toLocaleString()}</div>
+              </div>
+              <div className="p-4 rounded-lg border border-default" style={{ background: 'var(--color-bg-card)' }}>
+                <div className="text-xs text-secondary">扣减合计</div>
+                <div className="text-xl font-bold font-mono text-red-400">-¥{periodSummary.deductionsTotal.toLocaleString()}</div>
+              </div>
+              <div className="p-4 rounded-lg border border-default" style={{ background: 'var(--color-bg-card)' }}>
+                <div className="text-xs text-secondary">应结净额</div>
+                <div className="text-xl font-bold font-mono text-[var(--color-accent)]">¥{periodSummary.total.toLocaleString()}</div>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <p className="text-xs text-secondary mb-2">本月包含 {periodCommissions.length} 张试算单：</p>
+              <div className="space-y-2">
+                {periodCommissions.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between text-xs bg-card rounded-md px-3 py-2 border border-default">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-muted">{c.id}</span>
+                      <span className="text-secondary">{c.items.length} 条明细 · {c.deductions.length} 条扣减</span>
+                      <StatusBadge
+                        status={COMMISSION_STATUS_LABELS[c.status]}
+                        colorMap={Object.fromEntries(
+                          Object.entries(COMMISSION_STATUS_LABELS).map(([k, v]) => [v, STATUS_VARIANT_MAP[k as CommissionStatus]])
+                        )}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => navigate(`/commission/${c.id}`)}
+                        className="text-[var(--color-accent)] hover:underline"
+                      >
+                        试算单
+                      </button>
+                      <span className="text-muted">|</span>
+                      <button
+                        onClick={() => navigate(`/statement/single/${c.id}`)}
+                        className="text-[var(--color-accent)] hover:underline"
+                      >
+                        单据对账
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--color-bg-card)' }}>

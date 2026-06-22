@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, AlertTriangle, ChevronDown, ChevronUp, Phone, Ticket, Store, Clock, MessageSquare, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Check, AlertTriangle, ChevronDown, ChevronUp, Phone, Ticket, Store, Clock, MessageSquare, RefreshCw, Link2, Calendar } from 'lucide-react'
 import { useAppStore } from '@/store'
 import StatusBadge from '@/components/StatusBadge'
 import {
@@ -18,6 +18,7 @@ const STATUS_VARIANT_MAP: Record<CommissionStatus, 'default' | 'warning' | 'info
   reviewed: 'info',
   approved: 'success',
   rejected: 'danger',
+  paid: 'success',
 }
 
 const DEDUCTION_VARIANT_MAP: Record<DeductionType, 'bg-red-500/15 text-red-400' | 'bg-orange-500/15 text-orange-400' | 'bg-amber-500/15 text-amber-400'> = {
@@ -52,6 +53,31 @@ export default function CommissionDetail() {
 
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
   const [expandedDeductions, setExpandedDeductions] = useState<Set<string>>(new Set())
+
+  const itemRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
+  const deductionRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
+
+  function getDeductionForItem(matchId: string) {
+    return commission.deductions.find((d) => d.relatedMatchId === matchId)
+  }
+
+  function getItemForDeduction(matchId: string) {
+    return commission.items.find((i) => i.matchResultId === matchId)
+  }
+
+  function scrollToDeduction(deductionId: string) {
+    setExpandedDeductions((prev) => new Set(prev).add(deductionId))
+    requestAnimationFrame(() => {
+      deductionRefs.current[deductionId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
+
+  function scrollToItem(itemId: string) {
+    setExpandedItems((prev) => new Set(prev).add(itemId))
+    requestAnimationFrame(() => {
+      itemRefs.current[itemId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
 
   const commission = commissions.find((c) => c.id === id)
 
@@ -135,6 +161,12 @@ export default function CommissionDetail() {
             {store && <span className="mx-2">·</span>}
             {store?.name}
           </p>
+          {commission.recalcAt && (
+            <p className="text-xs text-muted mt-1 flex items-center gap-1">
+              <Calendar size={12} />
+              最后校准：{commission.recalcAt}
+            </p>
+          )}
         </div>
         <div className="text-right flex flex-col items-end gap-2">
           <StatusBadge
@@ -201,9 +233,15 @@ export default function CommissionDetail() {
                 const isRefunded = match?.isRefunded
                 const isDuplicate = match?.isDuplicate
                 const hasIssue = isRefunded || isDuplicate
+                const relatedDeduction = hasIssue && match ? getDeductionForItem(match.id) : undefined
                 return (
                   <>
-                    <tr key={item.id} className={`border-t border-default bg-card ${isExpanded ? 'bg-hover' : 'hover:bg-hover'} transition-colors cursor-pointer`} onClick={() => toggleItem(item.id)}>
+                    <tr
+                      key={item.id}
+                      ref={(el) => { itemRefs.current[item.id] = el }}
+                      className={`border-t border-default bg-card ${isExpanded ? 'bg-hover' : 'hover:bg-hover'} transition-colors cursor-pointer`}
+                      onClick={() => toggleItem(item.id)}
+                    >
                       <td className="px-4 py-3 text-muted">
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </td>
@@ -261,12 +299,28 @@ export default function CommissionDetail() {
                               <div className="flex items-center gap-2 col-span-2 md:col-span-3">
                                 <AlertTriangle size={14} className="text-red-400 shrink-0" />
                                 <span className="text-red-400 text-xs">该笔成交已退款，将在扣减项中对应扣除</span>
+                                {relatedDeduction && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); scrollToDeduction(relatedDeduction.id) }}
+                                    className="ml-2 flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                                  >
+                                    <Link2 size={10} /> 查看对应扣减
+                                  </button>
+                                )}
                               </div>
                             )}
                             {isDuplicate && (
                               <div className="flex items-center gap-2 col-span-2 md:col-span-3">
                                 <AlertTriangle size={14} className="text-orange-400 shrink-0" />
                                 <span className="text-orange-400 text-xs">跨门店重复线索，将在扣减项中对应扣除</span>
+                                {relatedDeduction && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); scrollToDeduction(relatedDeduction.id) }}
+                                    className="ml-2 flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition-colors"
+                                  >
+                                    <Link2 size={10} /> 查看对应扣减
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -304,9 +358,15 @@ export default function CommissionDetail() {
                 const match = d.relatedMatchId ? getMatchById(d.relatedMatchId) : undefined
                 const lead = match ? getLeadById(match.leadId) : undefined
                 const isExpanded = expandedDeductions.has(d.id)
+                const relatedItem = match ? getItemForDeduction(match.id) : undefined
                 return (
                   <>
-                    <tr key={d.id} className={`border-t border-default bg-card ${isExpanded ? 'bg-hover' : 'hover:bg-hover'} transition-colors cursor-pointer`} onClick={() => toggleDeduction(d.id)}>
+                    <tr
+                      key={d.id}
+                      ref={(el) => { deductionRefs.current[d.id] = el }}
+                      className={`border-t border-default bg-card ${isExpanded ? 'bg-hover' : 'hover:bg-hover'} transition-colors cursor-pointer`}
+                      onClick={() => toggleDeduction(d.id)}
+                    >
                       <td className="px-4 py-3 text-muted">
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </td>
@@ -351,6 +411,18 @@ export default function CommissionDetail() {
                               <span className="text-secondary">对应佣金：</span>
                               <span className="text-primary font-mono">¥{d.amount.toLocaleString()}</span>
                             </div>
+                            {relatedItem && (
+                              <div className="flex items-center gap-2 col-span-2 md:col-span-3">
+                                <Link2 size={14} className="text-[var(--color-accent)] shrink-0" />
+                                <span className="text-secondary">该扣减对应佣金明细中的异常项：</span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); scrollToItem(relatedItem.id) }}
+                                  className="flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-[var(--color-accent)]/15 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/25 transition-colors"
+                                >
+                                  查看原始明细
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>

@@ -6,7 +6,7 @@ export type LeadType = 'coupon' | 'consultation' | 'visit' | 'transaction'
 export type LeadSource = 'group_buy' | 'private_domain' | 'walk_in'
 export type MatchType = 'phone' | 'coupon' | 'remark' | 'manual'
 export type Confidence = 'high' | 'medium' | 'low'
-export type CommissionStatus = 'draft' | 'submitted' | 'reviewed' | 'approved' | 'rejected'
+export type CommissionStatus = 'draft' | 'submitted' | 'reviewed' | 'approved' | 'rejected' | 'paid'
 export type DeductionType = 'refund' | 'no_deal' | 'duplicate'
 export type KOLStatus = 'active' | 'inactive'
 export type UserRole = 'marketer' | 'supervisor' | 'finance' | 'admin'
@@ -127,6 +127,7 @@ export interface CommissionCalc {
   createdAt: string
   isDisputed: boolean
   disputeReason?: string
+  recalcAt?: string
 }
 
 export interface User {
@@ -177,6 +178,7 @@ export const COMMISSION_STATUS_LABELS: Record<CommissionStatus, string> = {
   reviewed: '已复核',
   approved: '已终审',
   rejected: '已驳回',
+  paid: '已打款',
 }
 
 export const DEDUCTION_TYPE_LABELS: Record<DeductionType, string> = {
